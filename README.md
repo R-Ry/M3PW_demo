@@ -9,3 +9,5 @@ The graphics used are from the console window itself, so make sure that the cons
 This is the first time I made anything involving a player/monster interaction and I am aware that the controls are stiff at the moment. However, any suggestions to solve control related issues would be great.
 
 As of January 7, 2018, since this code has never been published anywhere, there is an absence of comments in the code other than in the main function and I will do my best to add comments where they are needed.
+
+This code is completely portable so it may be compiled on any operating system since its graphics use console output.
