@@ -2,12 +2,13 @@
 #include "map.hpp"
 #include "player.hpp"
 
-/*	Last updated: December 14, 2017
+/*	Last updated: January 4, 2018
 */
 
 static const int kMapScreenWidth = 80, kMapScreenHeight = 45;
 
 static Player *player = 0;
+
 /*	ensure that the first time that get_camera_offset is called, the offset is
 	updated since the player position is always positive.
 */
@@ -21,6 +22,7 @@ void camera_offset_set_player(Player *p){
 	player = p;
 }
 
+/*get the correct display position of a particular position on the map*/
 Vector get_camera_offset(Vector map_position){
 	if(player->get_position() == last_player_position){
 		return Vector(offset_x, offset_y) + map_position / 100;

@@ -11,8 +11,7 @@ static const int kDragonWidth = 900, kDragonHeight = 900;
 class Dragon: public Mob{
 public:
 	Dragon(Map *m, int x_position, int y_position);
-	virtual void control_normal_movement();
-	virtual void control_aggro_movement();
+	virtual void control();
 	virtual void draw(ScreenLayer *mob_layer);
 private:
 	bool is_target_hit_;

@@ -4,8 +4,10 @@
 #include "damage_display.hpp"
 #include "framerate.hpp"
 #include "map.hpp"
+#include "map_mob_selector.hpp"
 #include "mob.hpp"
 #include "player.hpp"
+#include "rand.hpp"
 #include "sprite_data_provider.hpp"
 
 #include <stdio.h>
@@ -21,6 +23,7 @@ const int kPlayerExp[] = {
 
 Player::Player():
 position_(300, 0),
+size_(300, 300),
 direction_(DIRECTION_DOWN),
 map_(0),
 level_(1),
@@ -33,8 +36,7 @@ speed_(300),
 sprite_(SpriteDataProvider::get_instance()->get_sprite_by_name("sprites/player.txt"))
 {
 	player_state_info_.player_state_ = PLAYER_STATE_STANDING;
-	draw_image(sprite_, 0, 0);
-	render();
+	player_state_info_.time_delayed_until_ = 0;
 }
 
 void Player::set_map(Map *map){
@@ -49,6 +51,10 @@ Vector Player::get_position(){
 	return position_;
 }
 
+Vector Player::get_size(){
+	return size_;
+}
+
 bool Player::is_dead(){
 	return hp_ < 1;
 }
@@ -56,6 +62,9 @@ bool Player::is_dead(){
 void Player::take_damage(int damage){
 	hp_ -= damage;
 	
+	/*the player loses 10% experience if the amount
+	 *of damage hit reduces the hp to less than or 
+	 *equal to 0*/
 	if(hp_ < 1){
 		hp_ = 0;
 		exp_ -= (max_exp_ / 10);
@@ -69,40 +78,46 @@ void Player::take_damage(int damage){
 void Player::add_exp(int exp){
 	exp_ += exp;
 	
+	/*if exp_ reaches max_exp_, the player gains a level and
+	 *the remaining experience is transferred to the next level*/
 	if(exp_ >= max_exp_){
 		exp_ -= max_exp_;
 		level_++;
+		
+		/*max_exp_ gets its value from a constant array derived
+		 *from a formula*/
 		max_exp_ = kPlayerExp[level_ - 1];
 	}
 }
 
-/*	the player attack is currently implemented as follows:
-	there is a 1/2 second delay after pressing the attack button,
-	attack starts, physical attacks hit immediately.
+/*	How update() works, first the player is updated based on its current player_state
 	
-	then there is a 1/2 second delay
-	
-	the hit positions and hit damages are delimited by -1 at the end of
-		their arrays, if smaller than 6
-	
+	THEN the player's state is updated according to the action given to the player so
+	that in the next frame, the player will respond to the action.
  */
 
 void Player::update(PlayerControlAction action){
 	
 	/* update player based on its state from the last frame*/
 	switch(player_state_info_.player_state_){
+	/*do nothing if the player is not moving*/
 	case PLAYER_STATE_STANDING:
 		break;
+	/*update the position according to the last input*/
 	case PLAYER_STATE_MOVING:
 		switch(direction_){
 		case DIRECTION_UP:
 			position_.y_ -= speed_ / FRAMES_PER_SEC;
+			/*if the player's top left point position is beyond the top left corner
+			 *of the map, the player can't go up any further*/
 			if(position_.y_ < 0){
 				position_.y_ = 0;
 			}
 			break;
 		case DIRECTION_DOWN:
 			position_.y_ += speed_ / FRAMES_PER_SEC;
+			/*if the player's top left point position is beyond the map height minus
+			 *the player height, don't let the player move further in that direction*/
 			if(position_.y_ > map_->get_height() - kPlayerHeight){
 				position_.y_ = map_->get_height() - kPlayerHeight;
 			}
@@ -121,109 +136,37 @@ void Player::update(PlayerControlAction action){
 			break;
 		}
 		
-		//set the player state to not moving, since the state should not stay moving automatically.
-		player_state_info_.player_state_ = PLAYER_STATE_STANDING;
-		break;
-	case PLAYER_STATE_ATTACKING:
-		/* code that executes a regular close combat attack */
+		/*set the player state to not moving, since the state should not stay moving automatically.
+		 *HOWEVER, if the player just started moving, to compensate for the brief lack of input of
+		 *console windows, the player state will remain moving for at least 24/30 seconds*/
 		
-		//NOTE: THIS SHOULD BE COMPLETELY REPLACED BY A SWITCH STATEMENT FOR THE TYPE OF ATTACK AND
-		//SHOULD LOOK LIKE
-		//
-		//player_attack_info.update_(this, &player_state_info_);
-		{
-			int elapsed_time = get_current_frame() - player_state_info_.time_of_attack_;
-			
-			if(elapsed_time == 0 || elapsed_time < FRAMES_PER_SEC / 2){
-				/*nothing happens for first half after starting attack*/
-			}
-			if(elapsed_time == FRAMES_PER_SEC / 2){
-				/*hit the mob*/
-				/*find the closest mob in front of the player*/
-				std::vector<Mob*> *map_mobs = map_->get_mobs();
-				
-				std::vector<Mob*> mobs_in_line;
-				Mob* closest_mob = 0;
-				
-				/*first list all mobs in line of player's direction*/
-				for(int i = 0; i < map_mobs->size(); ++i){
-					
-					Vector position_difference = (*map_mobs)[i]->get_position() + (*map_mobs)[i]->get_size() / 2 - position_ - Vector(150, 150);
-					
-					switch(direction_){
-					case DIRECTION_UP:
-						if(position_difference.y_ < 0 &&
-							(float(position_difference.x_) / float(position_difference.y_)) < 0.5 &&
-							(float(position_difference.x_) / float(position_difference.y_)) > -0.5){
-								
-							mobs_in_line.push_back((*map_mobs)[i]);
-						}
-						break;
-					case DIRECTION_DOWN:
-						if(position_difference.y_ > 0 &&
-							(float(position_difference.x_) / float(position_difference.y_)) < 0.5 &&
-							(float(position_difference.x_) / float(position_difference.y_)) > -0.5){
-								
-							mobs_in_line.push_back((*map_mobs)[i]);
-						}
-						break;
-					case DIRECTION_LEFT:
-						if(position_difference.x_ < 0 &&
-							(float(position_difference.y_) / float(position_difference.x_)) < 0.5 &&
-							(float(position_difference.y_) / float(position_difference.x_)) > -0.5){
-								
-							mobs_in_line.push_back((*map_mobs)[i]);
-						}
-						break;
-					case DIRECTION_RIGHT:
-						if(position_difference.x_ > 0 &&
-							(float(position_difference.y_) / float(position_difference.x_)) < 0.5 &&
-							(float(position_difference.y_) / float(position_difference.x_)) > -0.5){
-							
-							mobs_in_line.push_back((*map_mobs)[i]);
-						}
-						break;
-					}
-				}
-				
-				/*select the closest mob to player*/
-				int closest_square_distance = 62500;
-				for(int i = 0; i < mobs_in_line.size(); ++i){
-					
-					Vector distance = mobs_in_line[i]->get_position() + mobs_in_line[i]->get_size() / 2 - position_ - Vector(150, 150);
-					
-					int square_distance = distance * distance - Vector(150,150)*Vector(150,150) - ((*map_mobs)[i]->get_size()/2)*((*map_mobs)[i]->get_size()/2);
-					
-					if(square_distance < closest_square_distance){
-						closest_mob = mobs_in_line[i];
-						closest_square_distance = square_distance;
-					}
-				}															printf("a2.7\n");
-				
-				/*if a mob is in range of the player's attack, hit mob and record damages and their positions*/
-				player_state_info_.mob_hit_positions_[0] = -1;
-				player_state_info_.mob_hit_damages_[0] = -1;
-				if(closest_mob != 0){
-					closest_mob->take_damage(strength_, this);
-					
-					player_state_info_.mob_hit_positions_[0] = closest_mob->get_position().x_ + closest_mob->get_size().x_ / 2;
-					player_state_info_.mob_hit_positions_[1] = closest_mob->get_position().y_ + closest_mob->get_size().y_ / 2;
-					player_state_info_.mob_hit_positions_[2] = -1;
-					player_state_info_.mob_hit_damages_[0] = strength_;
-					player_state_info_.mob_hit_damages_[1] = -1;
-				}
-			}
-			if(elapsed_time > FRAMES_PER_SEC / 2 && elapsed_time <= FRAMES_PER_SEC * 1){
-			}
-			if(elapsed_time > FRAMES_PER_SEC * 1){
-				player_state_info_.player_state_ = PLAYER_STATE_STANDING;
-			}
-		}		
+		if( (player_state_info_.time_of_start_movement_ + FRAMES_PER_SEC * 24 / 30) < get_current_frame()){
+			player_state_info_.player_state_ = PLAYER_STATE_STANDING;
+		}
 		break;
 	}
 	
-	/* process keyboard input */
-	if(player_state_info_.player_state_ == PLAYER_STATE_ATTACKING){
+	/*update the player according to what is currently in the queue.*/
+	update_queue();
+
+	/*Check the player action queue and remove any concurrent action that is finished*/
+	if(queue_.size() > 0){
+		std::vector<PlayerActionInfo> new_action_queue;
+		for(int i = 0; i < queue_.size(); ++i){
+			if(!queue_[i].is_finished_){
+				new_action_queue.push_back(queue_[i]);
+			}
+		}
+		queue_ = new_action_queue;
+	}
+
+	//------------------->Input section of update()<-----------------------------------
+	//=================================================================================
+
+
+	/* process keyboard input
+	 *if some player action is in progress, input is not accepted*/
+	if(player_state_info_.time_delayed_until_ > get_current_frame()){
 		return;
 	}
 	
@@ -231,47 +174,93 @@ void Player::update(PlayerControlAction action){
 	case PLAYER_ACTION_NONE:
 		break;
 	case PLAYER_ACTION_UP:
+		/*if the player just started to move up, then record the time when the player started to move up
+		 *so that the player will continue to move at least 24/30 frames after starting*/
+		if(player_state_info_.player_state_ != PLAYER_STATE_MOVING){
+			player_state_info_.time_of_start_movement_ = get_current_frame();
+		}
+		
 		player_state_info_.player_state_ = PLAYER_STATE_MOVING;
 		direction_ = DIRECTION_UP;
 		break;
 	case PLAYER_ACTION_DOWN:
+		if(player_state_info_.player_state_ != PLAYER_STATE_MOVING){
+			player_state_info_.time_of_start_movement_ = get_current_frame();
+		}
+		
 		player_state_info_.player_state_ = PLAYER_STATE_MOVING;
 		direction_ = DIRECTION_DOWN;
 		break;
 	case PLAYER_ACTION_LEFT:
+		if(player_state_info_.player_state_ != PLAYER_STATE_MOVING){
+			player_state_info_.time_of_start_movement_ = get_current_frame();
+		}
+		
 		player_state_info_.player_state_ = PLAYER_STATE_MOVING;
 		direction_ = DIRECTION_LEFT;
 		break;
 	case PLAYER_ACTION_RIGHT:
+		if(player_state_info_.player_state_ != PLAYER_STATE_MOVING){
+			player_state_info_.time_of_start_movement_ = get_current_frame();
+		}
+		
 		player_state_info_.player_state_ = PLAYER_STATE_MOVING;
 		direction_ = DIRECTION_RIGHT;
 		break;
-	case PLAYER_ACTION_ATTACK:
-		player_state_info_.time_of_attack_ = get_current_frame();
-		player_state_info_.player_state_ = PLAYER_STATE_ATTACKING;
+	case PLAYER_ACTION_ATTACK_NORMAL_MELEE:
+		{
+			/*add all the needed information to the player action queue which will then use
+			 *the information*/
+			PlayerActionInfo info;
+			info.action_ = PLAYER_ACTION_ATTACK_NORMAL_MELEE;
+			info.start_frame_ = get_current_frame();
+			info.stage_ = 0;
+			info.is_finished_ = false;
+			info.player_position_ = position_ + size_ / 2;
+			info.direction_ = direction_;
+			info.num_hits_ = 1;
+			queue_.push_back(info);
+
+			player_state_info_.player_state_ = PLAYER_STATE_ATTACKING;
+			player_state_info_.time_delayed_until_ = get_current_frame() + FRAMES_PER_SEC * 0.7;
+		}
+		break;
+	case PLAYER_ACTION_ATTACK_HAIL:
+		{
+			/*add all the needed information to the player action queue which will then use
+			 *the information*/
+			PlayerActionInfo info;
+			info.action_ = PLAYER_ACTION_ATTACK_HAIL;
+			info.start_frame_ = get_current_frame();
+			info.stage_ = 0;
+			info.is_finished_ = false;
+			info.player_position_ = position_ + size_ / 2;
+			info.direction_ = direction_;
+			info.num_hits_ = 1;
+			queue_.push_back(info);
+
+			player_state_info_.player_state_ = PLAYER_STATE_ATTACKING;
+			player_state_info_.time_delayed_until_ = get_current_frame() + FRAMES_PER_SEC * 3.0;
+		}
 		break;
 	}
 }
 
 void Player::draw(ScreenLayer *player_layer){
-	Vector display_position = get_camera_offset(position_); draw_int_left_end(display_position.x_, 60, 0); draw_int_left_end(display_position.y_, 65, 0);
-															draw_int_left_end(position_.x_, 60, 1); draw_int_left_end(position_.y_, 65, 1);
+	/*the draw function draws according to the player's state (standing/moving/attacking)*/
+	
+	Vector display_position = get_camera_offset(position_);
 	
 	switch(player_state_info_.player_state_){
 	case PLAYER_STATE_ATTACKING:
-		{
-			int elapsed_time = get_current_frame() - player_state_info_.time_of_attack_;
-			
-			if(elapsed_time == FRAMES_PER_SEC / 2){
-				for(int i = 0; i < 6 && player_state_info_.mob_hit_positions_[i * 2] != -1; ++i){
-					
-					Vector damage_display_position = get_camera_offset(Vector(player_state_info_.mob_hit_positions_[i * 2], player_state_info_.mob_hit_positions_[i * 2 + 1]) );
-					DamageDisplay::add_damage(player_state_info_.mob_hit_damages_[i * 6], damage_display_position);
-				}
-			}
-		}
 	case PLAYER_STATE_STANDING:
 	case PLAYER_STATE_MOVING:
+		/*in all cases the player sprite is drawn on the screen
+		 *
+		 *parameters of draw_image_clip is the sprite, draw position,
+		 *position from sprite to draw, and the dimensions of the sprite to draw
+		 *
+		 *refer to console_graphics.hpp for more info*/
 		if(direction_ == DIRECTION_UP){
 			player_layer->draw_image_clip(sprite_, display_position.x_, display_position.y_, 0, 0, 3, 3);
 		}
@@ -286,7 +275,11 @@ void Player::draw(ScreenLayer *player_layer){
 		}
 		break;
 	}
+
+	draw_queue(player_layer);
 	
+	/*draw the amount of player hp left of max hp and current exp of max exp on
+	 *the bottom of the screen*/
 	player_layer->draw_str("HP: ", 0, 49);
 	player_layer->draw_int_right_end(hp_, 6, 49);
 	player_layer->draw_str("/", 7, 49);
@@ -296,4 +289,108 @@ void Player::draw(ScreenLayer *player_layer){
 	player_layer->draw_int_right_end(exp_, 30, 49);
 	player_layer->draw_str("/", 31, 49);
 	player_layer->draw_int_left_end(max_exp_, 32, 49);
+}
+
+void Player::update_queue(){
+	/*execute anything that the may be in progress in the action queue*/
+
+	for(int i = 0; i < queue_.size(); ++i){
+
+		int elapsed_frames = get_current_frame() - queue_[i].start_frame_;
+
+		switch(queue_[i].action_){
+		case PLAYER_ACTION_ATTACK_NORMAL_MELEE:
+			/*all that must be done is pick which mob to hit*/
+			if(queue_[i].stage_ == 0){
+				std::vector<Mob*> mob_to_hit = get_near_mobs(this, 100, 1, direction_, 0.5);
+
+				queue_[i].num_mobs_ = mob_to_hit.size();
+
+				if(mob_to_hit.size() > 0){
+					/*the damage hit is 50 ~ 100% of the strength of the player*/
+					queue_[i].damages_[0] = strength_ / 2 + random_number() % (strength_ / 2);
+
+					/*record where the mob is during the attack*/
+					Vector mob_midpoint = mob_to_hit[0]->get_position() + mob_to_hit[0]->get_size() / 2;
+					queue_[i].target_position_[0] = mob_midpoint;
+					mob_to_hit[0]->take_damage(queue_[i].damages_[0], this);
+				}
+
+				queue_[i].stage_++;
+			}
+			break;
+		case PLAYER_ACTION_ATTACK_HAIL:
+			/*ALL THAT MUST BE DONE IS PICK WHICH MOBS (MAX 4, RANGE 500) TO HIT*/
+			if(queue_[i].stage_ == 0){
+				std::vector<Mob*> mobs_to_hit = get_near_mobs(this, 500, 4, DIRECTION_NONE);
+
+				queue_[i].num_mobs_ = mobs_to_hit.size();
+
+				for(int mob_num = 0; mob_num < mobs_to_hit.size(); ++mob_num){
+					/*the damage hit is 250 ~ 500% of the strength of the player*/
+					queue_[i].damages_[mob_num] = strength_ * 5 / 2 + random_number() % (strength_  * 5 / 2);
+
+					/*record where the mob is during the attack*/
+					Vector mob_midpoint = mobs_to_hit[mob_num]->get_position() + mobs_to_hit[mob_num]->get_size() / 2;
+					queue_[i].target_position_[mob_num] = mob_midpoint;
+
+					/*hit the mobs*/
+					mobs_to_hit[mob_num]->take_damage(queue_[i].damages_[mob_num], this);
+				}
+
+				queue_[i].stage_++;
+			}
+			break;
+		}
+	}
+}
+
+void Player::draw_queue(ScreenLayer *player_layer){
+	for(int i = 0; i < queue_.size(); ++i){
+		/*the amount of time since the start frame*/
+		int elapsed_frames = get_current_frame() - queue_[i].start_frame_;
+
+		switch(queue_[i].action_){
+		case PLAYER_ACTION_ATTACK_NORMAL_MELEE:
+			if(queue_[i].stage_ == 1 && elapsed_frames > 0.5 * FRAMES_PER_SEC){
+				/*draw the damage hit on the monster*/
+				if(queue_[i].num_mobs_ > 0){
+					DamageDisplay::add_damage(queue_[i].damages_[0], queue_[i].target_position_[0]);
+				}
+
+				queue_[i].stage_++;
+				queue_[i].is_finished_ = true;
+			}
+			break;
+		case PLAYER_ACTION_ATTACK_HAIL:
+			if(queue_[i].stage_ == 1 || queue_[i].stage_ == 2 && elapsed_frames > 0.5 * FRAMES_PER_SEC){
+
+				/*start the animation of the ice shard hitting the monsters*/
+				for(int num_mobs = 0; num_mobs < queue_[i].num_mobs_; ++num_mobs){
+
+					Sprite* hail_animation = SpriteDataProvider::get_instance()->get_sprite_by_name("sprites/player_attack_hail.txt");
+
+					Vector draw_position = get_camera_offset(queue_[i].target_position_[num_mobs] - Vector(450, 450));
+					/*there are 8 frames total in the animation. they should play
+					 *between 0.5 seconds and 3.5 seconds after attacking
+
+					 *span of 3.0 * FRAMES_PER_SEC frames*/
+					int animation_frame = (int)(elapsed_frames - 0.5 * FRAMES_PER_SEC) * 8 / 3 / FRAMES_PER_SEC % 8;
+					player_layer->draw_image_clip(hail_animation, draw_position.x_, draw_position.y_, 0, animation_frame * 9, 9, 9);
+				}
+				
+				/*show the damages on the mobs at 3.0 seconds*/
+				if(elapsed_frames > 3.0 * FRAMES_PER_SEC && queue_[i].stage_ == 1){
+					for(int num_mobs = 0; num_mobs < queue_[i].num_mobs_; ++num_mobs){
+						DamageDisplay::add_damage(queue_[i].damages_[num_mobs], queue_[i].target_position_[num_mobs]);
+					}
+					queue_[i].stage_++;
+				}
+			}
+			if(queue_[i].stage_ == 2 && elapsed_frames > 3.5 * FRAMES_PER_SEC){
+				queue_[i].is_finished_ = true;
+			}
+			break;
+		}
+	}
 }
