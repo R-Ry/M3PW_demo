@@ -31,8 +31,13 @@ void set_screen_dimensions(int width, int height){
 		delete[] last_screen;
 		screen_width = width;
 		screen_height = height;
-		screen = new char[screen_width * screen_height + 1]();
-		last_screen = new char[screen_width * screen_height + 1]();
+		screen = new char[screen_width * screen_height + 1];
+		last_screen = new char[screen_width * screen_height + 1];
+		
+		memset(screen, background, screen_width * screen_height);
+		memset(last_screen, background, screen_width * screen_height);
+		screen[screen_width * screen_height] = '\0';
+		screen[screen_width * screen_height] = '\0';
 	}
 }
 
@@ -52,6 +57,8 @@ void render(void){
 			}
 		}
 	}
+	/*make the right ends of the screen strings appended with a newline
+	 */
 	for(int row = 1; row < screen_height + 1; ++row){
 		screen[row * screen_width - 1] = '\n';
 	}
@@ -83,7 +90,44 @@ void draw_text(const char* str, int x, int y, int width, int height, int frame){
 	}
 }
 
-void draw_str(const char* str, int x, int y, int width, int height){
+//draw a string onto the screen, following format that a '\n' moves down one line, '\r'
+//moves to the left of the line, '\t' moves forward four characters.
+void draw_str(const char* str, int x, int y, int width, int height, int length){
+	int i = 0;
+	int char_num = 0;
+	
+	while(str[char_num] && ((y + i/width) * screen_width + x + i%width%screen_width) < screen_width * screen_height 
+			&& char_num < length && i/width < height){
+		switch(str[char_num]){
+		case '\n':
+			//i is moved down one line, but not moved back. Use "\n\r" when the
+			//carriage return is intended.
+			i += width;
+			break;
+		case '\r':
+			//i is moved to the start of the line.
+			//divide i by the width of each rows and multiply by width again.
+			//i gets any remainder truncated in the division since it is an int.
+			i = i/width * width;
+			break;
+		case '\t':
+			//i is moved to the next 4 characters on the line.
+			//first move i to the start of the line.
+			//then calculate which group of 4 characters i is in and move it to
+			//the start of that group. Then add 4 to i to move to the start of next group.
+			i = i/width * width + (i%width)/4 * 4 + 4;
+			break;
+		default:
+			screen[(y + i/width) * screen_width + x + i%width%screen_width] = str[char_num];
+			i++;
+			break;
+		}
+		char_num++;
+	}
+}
+	
+
+void draw_str_wrapped(const char* str, int x, int y, int width, int height){
 	int str_index = 0;
 	char next_word[128];
 	
@@ -439,7 +483,41 @@ void ScreenLayer::draw_text(const char* str, int x, int y, int width, int height
 	}
 }
 
-void ScreenLayer::draw_str(const char* str, int x, int y, int width, int height){
+void ScreenLayer::draw_str(const char* str, int x, int y, int width, int height, int length){
+	int i = 0;
+	int char_num = 0;
+	
+	while(str[char_num] && ((y + i/width) * screen_width_ + x + i%width%screen_width_) < screen_width_ * screen_height_ 
+			&& char_num < length && i/width < height){
+		switch(str[char_num]){
+		case '\n':
+			//i is moved down one line, but not moved back. Use "\n\r" when the
+			//carriage return is intended.
+			i += width;
+			break;
+		case '\r':
+			//i is moved to the start of the line.
+			//divide i by the width of each rows and multiply by width again.
+			//i gets any remainder truncated in the division since it is an int.
+			i = i/width * width;
+			break;
+		case '\t':
+			//i is moved to the next 4 characters on the line.
+			//first move i to the start of the line.
+			//then calculate which group of 4 characters i is in and move it to
+			//the start of that group. Then add 4 to i to move to the start of next group.
+			i = i/width * width + (i%width)/4 * 4 + 4;
+			break;
+		default:
+			screen_[(y + i/width) * screen_width_ + x + i%width%screen_width_] = str[char_num];
+			i++;
+			break;
+		}
+		char_num++;
+	}
+}
+
+void ScreenLayer::draw_str_wrapped(const char* str, int x, int y, int width, int height){
 	int str_index = 0;
 	char next_word[128];
 	

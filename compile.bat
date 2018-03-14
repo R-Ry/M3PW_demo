@@ -1,0 +1,1 @@
+g++ camera_offset.cpp console_graphics.cpp damage_display.cpp demo2.cpp dragon.cpp error_report.cpp framerate.cpp icon.res key_event.cpp map.cpp map_data.cpp map_mob_selector.cpp mob.cpp player.cpp sprite_data_provider.cpp

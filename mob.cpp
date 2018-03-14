@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 
+
 Mob::Mob(Map* m, float x_position, float y_position):
 hp_(0),
 max_hp_(0),
@@ -16,7 +17,8 @@ target_(0),
 position_(x_position, y_position),
 size_(0, 0),
 direction_(DIRECTION_RIGHT),
-mob_state_info_(),
+mob_state_(MOBSTATE_STANDING),
+time_delayed_until_(0),
 map_(m),
 sprite_(0)
 {
@@ -25,12 +27,9 @@ sprite_(0)
 void Mob::take_damage(int damage, Player *attacker){
 	target_ = attacker;
 	
-	hp_ -= damage;
+	mob_state_ = MOBSTATE_MOVING;
 	
-	if(mob_state_info_.mob_state != MOBSTATE_ATTACKING){
-		mob_state_info_.mob_state = MOBSTATE_RECOIL;
-		mob_state_info_.recoil_start = get_current_frame();
-	}
+	hp_ -= damage;
 	
 	if(hp_ < 1){
 		hp_ = 0;
@@ -42,19 +41,23 @@ void Mob::take_damage(int damage, Player *attacker){
 }
 
 /*when the mob is not aggro'd by player, doing its normal business*/
-void Mob::control_normal_movement(){
+void Mob::control(){
 	/*	the mob will more likely tend to be in a standing position_.
 		4/5 chance per second to stay standing still,
 		1/5 chance per second to change direction_ while standing and moving
 		3/5 chance per second to keep moving,
 	*/
-	switch(mob_state_info_.mob_state){
+	if(time_delayed_until_ > get_current_frame()){
+		return;
+	}
+
+	switch(mob_state_){
 	case MOBSTATE_STANDING:
 		{
 			int chance = random_number() % (5 * FRAMES_PER_SEC);
 			if(chance == 0){
 				/*start moving*/
-				mob_state_info_.mob_state = MOBSTATE_MOVING;
+				mob_state_ = MOBSTATE_MOVING;
 			}
 			if(chance == 1){
 				/*change direction_*/
@@ -106,7 +109,7 @@ void Mob::control_normal_movement(){
 			int chance = random_number() % (5 * FRAMES_PER_SEC);
 			if(chance > -1 && chance < 2){
 				/*stop moving*/
-				mob_state_info_.mob_state = MOBSTATE_STANDING;
+				mob_state_ = MOBSTATE_STANDING;
 			}
 			if(chance == 2){
 				/*change direction_*/

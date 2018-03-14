@@ -68,3 +68,15 @@ KeyEvents *get_key_events(){
 	
 	return &key_events_buf;
 }
+
+char get_char_input(){
+	unsigned char ch = getch();
+	
+	if(ch == 0 || ch == 224){
+		ch = getch();
+		return kConvertSpecialKey[ch];
+	}
+	else{
+		return (char)(ch);
+	}
+}
